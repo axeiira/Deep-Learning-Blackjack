@@ -16,6 +16,14 @@ upper = np.array([60 + 20, 255, 255])
 #Trained Model
 model = tf.keras.models.load_model('model/cnn_model.h5')
 
+stay = False
+temp = False
+game_state = "player"
+loser = None
+winner = None
+constant_player_score = 0
+constant_dealer_score = 0
+
 def load_class_mapping(mapping_file):
     if os.path.exists(mapping_file):
         class_names = {}
@@ -40,6 +48,28 @@ def DrawCircle(image, k, b):
     color = (175, 175, 0)
     thickness = -1
     image = cv.circle(image, center_coor, radius, color, thickness)
+    return image
+
+def create_button(image, button_position, button_size, text, text_color=(255, 255, 255), button_color=(255, 0, 0)):
+    x, y = button_position
+    width, height = button_size
+
+    # Draw the button (rectangle)
+    cv.rectangle(image, (x, y), (x + width, y + height), button_color, -1)
+
+    # Set up the text
+    font = cv.FONT_HERSHEY_SIMPLEX
+    font_scale = 1.0
+    thickness = 2
+
+    # Get text size to center it on the button
+    text_size = cv.getTextSize(text, font, font_scale, thickness)[0]
+    text_x = x + (width - text_size[0]) // 2
+    text_y = y + (height + text_size[1]) // 2
+
+    # Draw the text
+    cv.putText(image, text, (text_x, text_y), font, font_scale, text_color, thickness, cv.LINE_AA)
+
     return image
 
 def Masking(image):
@@ -72,15 +102,17 @@ def calculate_card_value(card_name):
             "nine": 9
         }
         return word_to_num_map.get(parts[0].lower(), -999)
-    
 
 def DetectCards(image,state):
     for i in range(10):
         cv.destroyWindow(f"Warped Card {i + 1}")
+    global game_state, loser, winner,stay, constant_player_score, constant_dealer_score
     mask = Masking(image)
     contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
     warped_cards = []
     detected_cards = []
+    player_score = 0
+    dealer_score = 0
 
     for contour in contours:
         area = cv.contourArea(contour)
@@ -136,23 +168,64 @@ def DetectCards(image,state):
             'class_name': class_name,
             'location': (int(top_left[0]), int(top_left[1]), int(bottom_right[0]), int(bottom_right[1]))
         })
-        print(detected_cards)
-        player_score = sum(calculate_card_value(card['class_name']) for card in detected_cards) 
+        if game_state == "player": 
+            player_score = sum(calculate_card_value(card['class_name']) for card in detected_cards) 
+        elif game_state == "dealer":
+            dealer_score = sum(calculate_card_value(card['class_name']) for card in detected_cards) 
         
     for contour in contours:
         cv.drawContours(image, [contour], -1, (255, 0, 255), 3)
     
     if state == 'play': 
-        # game_state = "player_turn"
-        # player_score = sum(calculate_card_value(card['class_name']) for card in detected_cards) 
-        # cv.putText(image, f'{game_state}',(x,y+50),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
-        # cv.putText(image, f'{player_score}',(x,y+100),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
-        if 'player_score' in locals() and player_score is not None:
-            cv.putText(image, f'{player_score}',(0,100),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
-        else:
-            cv.putText(image, "No Score",(0,100),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+        color = (200, 200, 200)
+        black_image = np.zeros((500, 500, 3), dtype=np.uint8)
         
-        return image
+        cv.putText(black_image, f'{game_state}',(250,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+        
+        if game_state == "player":
+            cv.putText(black_image, f'Player Score : {player_score}',(0,50),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+            # if player_score > 21:
+            #     winner = "Dealer"
+            #     loser = "Player"
+            #     game_state = "bust"
+            
+            create_button(black_image,(0,150),(100,100),"STAY (S)",(255,0,0),color)
+            if stay == True:
+                if constant_player_score == 0:
+                    constant_player_score = player_score
+                    stay = not stay
+                    
+            if stay != True and constant_player_score != 0:
+                game_state = "dealer"
+            
+        elif game_state == "dealer":
+            print(game_state)
+            cv.putText(black_image, f'Player Score : {constant_player_score}',(0,50),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+            cv.putText(black_image, f'Dealer Score : {dealer_score}',(0,200),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+                # if dealer_score > 21:
+                #     winner = "Player"
+                #     loser = "Dealer"
+                #     game_state = "bust"
+     
+            create_button(black_image,(0,250),(100,100),"STAY (S)",(255,0,0),color)
+            if stay == True:
+                if constant_dealer_score == 0:
+                    constant_dealer_score = dealer_score
+                game_state = "result"
+                
+        elif game_state == "bust":
+            cv.putText(black_image, f'{loser} Bust !!!',(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+            cv.putText(black_image, f'{winner} Win',(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+        
+        elif game_state == "result":
+            if constant_dealer_score > 21 or constant_player_score > constant_dealer_score:
+                cv.putText(black_image,"Player Wins",(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+            elif constant_player_score < constant_dealer_score:
+                cv.putText(black_image,"Dealer Wins",(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+            else:
+                cv.putText(black_image,"It's A Tie",(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+            
+        return image,black_image
     
     elif state == 'datasets':    
         return image,warped_cards
@@ -290,8 +363,9 @@ def handleState(key, state, frame):
         cv.imshow('Menu', frame)
         
     elif state == 'play':
-        frame = DetectCards(frame, state)
+        frame, stats = DetectCards(frame,state)
         cv.imshow('Frame', frame)
+        cv.imshow('Status', stats)
         
     elif state == 'datasets':
         Upload_to_Datasets(cam)
@@ -309,7 +383,13 @@ while True:
     key = cv.waitKey(1) & 0xFF
     state = handleState(key, state, image)
     
-    if key == ord('q'):
+    if key == ord('s'):
+        stay = not stay  # This toggles between True and False
+        time.sleep(1)
+    
+    print(stay)
+    
+    if key == ord('3'):
         break
     
 cv.destroyAllWindows()

@@ -9,3 +9,5 @@ datasets-kartu/
 #Ignore Dummy / Test Files
 test.py
 main-picture.py
+
+.DS_Store

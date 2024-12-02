@@ -15,14 +15,19 @@ upper = np.array([60 + 20, 255, 255])
 
 #Trained Model
 model = tf.keras.models.load_model('model/cnn_model.h5')
+menu_bg_path = "assets/menu-bg.jpg"
+game_bg_path = "assets/game-window.jpg"
 
 stay = False
 temp = False
 game_state = "player"
+restart = False
 loser = None
 winner = None
 constant_player_score = 0
 constant_dealer_score = 0
+saved_player_cards = []
+saved_dealer_cards = []
 
 def load_class_mapping(mapping_file):
     if os.path.exists(mapping_file):
@@ -99,14 +104,25 @@ def calculate_card_value(card_name):
             "six": 6,
             "seven": 7,
             "eight": 8,
-            "nine": 9
+            "nine": 9,
+            "ten": 10
         }
         return word_to_num_map.get(parts[0].lower(), -999)
+
+def get_card_image_path(class_name, base_dir='datasets-kartu'):
+    card_image_dir = os.path.join(base_dir, class_name)
+    card_image_file = 'QS_0.jpg'  # Adjust based on your file naming convention
+    card_image_path = os.path.join(card_image_dir, card_image_file)
+    if os.path.exists(card_image_path):
+        return card_image_path
+    else:
+        print(f"Card image not found for {class_name}. Expected at: {card_image_path}")
+        return None
 
 def DetectCards(image,state):
     for i in range(10):
         cv.destroyWindow(f"Warped Card {i + 1}")
-    global game_state, loser, winner,stay, constant_player_score, constant_dealer_score
+    global game_state, loser, winner,stay, constant_player_score, constant_dealer_score,restart,saved_dealer_cards,saved_player_cards
     mask = Masking(image)
     contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
     warped_cards = []
@@ -177,20 +193,40 @@ def DetectCards(image,state):
         cv.drawContours(image, [contour], -1, (255, 0, 255), 3)
     
     if state == 'play': 
-        color = (200, 200, 200)
-        black_image = np.zeros((500, 500, 3), dtype=np.uint8)
+        game_background = cv.imread(game_bg_path,cv.IMREAD_COLOR)
+        game_background =cv.resize(game_background,(image.shape[1],image.shape[0]))
+        board_window = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
+        board_window[:] = game_background
         
-        cv.putText(black_image, f'{game_state}',(250,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+        x_start, y_start, y_dealer = 193, 690, 230  # Starting position for the first card
+        gap = 20  # Initial gap between cards
+        card_width, card_height = 109, 138  # Card dimensions    
+        
+        cv.putText(board_window,"Player",(173,960),cv.FONT_HERSHEY_SIMPLEX,1.5,(255,255,255),2)
+        cv.putText(board_window,"Dealer",(173,460),cv.FONT_HERSHEY_SIMPLEX,1.5,(255,255,255),2)
+
         
         if game_state == "player":
-            cv.putText(black_image, f'Player Score : {player_score}',(0,50),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
-            # if player_score > 21:
-            #     winner = "Dealer"
-            #     loser = "Player"
-            #     game_state = "bust"
-            
-            create_button(black_image,(0,150),(100,100),"STAY (S)",(255,0,0),color)
+            for index, card in enumerate(detected_cards):
+                class_name = card['class_name']
+                x_offset = x_start + index * (card_width + gap)  # Calculate x position with gap
+                y_offset = y_start  # Keep y position constant
+
+                # Get the card image path
+                card_path = get_card_image_path(class_name)
+                if card_path is None:
+                    continue  # Skip if card image not found
+
+                # Load and resize the card image
+                card_image = cv.imread(card_path, cv.IMREAD_COLOR)
+                card_image = cv.resize(card_image, (card_width, card_height))
+
+                # Place the card on the board
+                roi = board_window[y_offset:y_offset+card_height, x_offset:x_offset+card_width]
+                roi[:] = card_image
+                
             if stay == True:
+                saved_player_cards = detected_cards.copy()
                 if constant_player_score == 0:
                     constant_player_score = player_score
                     stay = not stay
@@ -199,33 +235,107 @@ def DetectCards(image,state):
                 game_state = "dealer"
             
         elif game_state == "dealer":
-            print(game_state)
-            cv.putText(black_image, f'Player Score : {constant_player_score}',(0,50),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
-            cv.putText(black_image, f'Dealer Score : {dealer_score}',(0,200),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
-                # if dealer_score > 21:
-                #     winner = "Player"
-                #     loser = "Dealer"
-                #     game_state = "bust"
-     
-            create_button(black_image,(0,250),(100,100),"STAY (S)",(255,0,0),color)
+            for index, card in enumerate(detected_cards):
+                class_name = card['class_name']
+                x_offset = x_start + index * (card_width + gap)  # Calculate x position with gap
+                y_offset = y_dealer  # Keep y position constant
+
+                # Get the card image path
+                card_path = get_card_image_path(class_name)
+                if card_path is None:
+                    continue  # Skip if card image not found
+
+                # Load and resize the card image
+                card_image = cv.imread(card_path, cv.IMREAD_COLOR)
+                card_image = cv.resize(card_image, (card_width, card_height))
+
+                # Place the card on the board
+                roi = board_window[y_offset:y_offset+card_height, x_offset:x_offset+card_width]
+                roi[:] = card_image
+                
+            for index, card in enumerate(saved_player_cards):
+                class_name = card['class_name']
+                x_offset = x_start + index * (card_width + gap)  # Calculate x position with gap
+                y_offset = y_start  # Keep y position constant
+
+                # Get the card image path
+                card_path = get_card_image_path(class_name)
+                if card_path is None:
+                    continue  # Skip if card image not found
+
+                # Load and resize the card image
+                card_image = cv.imread(card_path, cv.IMREAD_COLOR)
+                card_image = cv.resize(card_image, (card_width, card_height))
+
+                # Place the card on the board
+                roi = board_window[y_offset:y_offset+card_height, x_offset:x_offset+card_width]
+                roi[:] = card_image
+            
             if stay == True:
+                saved_dealer_cards = detected_cards.copy()
                 if constant_dealer_score == 0:
                     constant_dealer_score = dealer_score
                 game_state = "result"
+                stay = not stay
                 
-        elif game_state == "bust":
-            cv.putText(black_image, f'{loser} Bust !!!',(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
-            cv.putText(black_image, f'{winner} Win',(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+        # elif game_state == "bust":
+        #     cv.putText(black_image, f'{loser} Bust !!!',(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+        #     cv.putText(black_image, f'{winner} Win',(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
         
         elif game_state == "result":
+            # cv.putText(board_window,'Result Of The Match', (80, 150), cv.FONT_HERSHEY_SIMPLEX, 1.2, text_color, 2, cv.LINE_AA)
             if constant_dealer_score > 21 or constant_player_score > constant_dealer_score:
-                cv.putText(black_image,"Player Wins",(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+                cv.putText(board_window,"Player Wins",(int(board_window.shape[1]/2)-10,int(board_window.shape[0]/2)),cv.FONT_HERSHEY_SIMPLEX,2.0,(255,255,255),2)
             elif constant_player_score < constant_dealer_score:
-                cv.putText(black_image,"Dealer Wins",(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+                cv.putText(board_window,"Dealer Wins",(int(board_window.shape[1]/2)-10,int(board_window.shape[0]/2)),cv.FONT_HERSHEY_SIMPLEX,2.0,(255,255,255),2)
             else:
-                cv.putText(black_image,"It's A Tie",(0,20),cv.FONT_HERSHEY_PLAIN,2.0,(255,255,255),2)
+                cv.putText(board_window,"Draw",(int(board_window.shape[1]/2)-10,int(board_window.shape[0]/2)),cv.FONT_HERSHEY_SIMPLEX,2.0,(255,255,255),2)
             
-        return image,black_image
+            for index, card in enumerate(saved_player_cards):
+                class_name = card['class_name']
+                x_offset = x_start + index * (card_width + gap)  # Calculate x position with gap
+                y_offset = y_start  # Keep y position constant
+
+                # Get the card image path
+                card_path = get_card_image_path(class_name)
+                if card_path is None:
+                    continue  # Skip if card image not found
+
+                # Load and resize the card image
+                card_image = cv.imread(card_path, cv.IMREAD_COLOR)
+                card_image = cv.resize(card_image, (card_width, card_height))
+
+                # Place the card on the board
+                roi = board_window[y_offset:y_offset+card_height, x_offset:x_offset+card_width]
+                roi[:] = card_image
+                
+            for index, card in enumerate(saved_dealer_cards):
+                class_name = card['class_name']
+                x_offset = x_start + index * (card_width + gap)  # Calculate x position with gap
+                y_offset = y_dealer  # Keep y position constant
+
+                # Get the card image path
+                card_path = get_card_image_path(class_name)
+                if card_path is None:
+                    continue  # Skip if card image not found
+
+                # Load and resize the card image
+                card_image = cv.imread(card_path, cv.IMREAD_COLOR)
+                card_image = cv.resize(card_image, (card_width, card_height))
+
+                # Place the card on the board
+                roi = board_window[y_offset:y_offset+card_height, x_offset:x_offset+card_width]
+                roi[:] = card_image
+            
+            if restart == True:
+                game_state = "player"
+                loser = None
+                winner = None
+                constant_player_score = 0
+                constant_dealer_score = 0
+                restart = False
+            
+        return image,board_window
     
     elif state == 'datasets':    
         return image,warped_cards
@@ -235,73 +345,10 @@ def DetectCards(image,state):
 initial_state = 'menu'
 state = initial_state
 
-def create_menu_background(width=1920, height=1080):
-    # Create a gradient background
-    background = np.zeros((height, width, 3), dtype=np.uint8)
-    for y in range(height):
-        # Create a vertical gradient from dark green to lighter green
-        intensity = int(255 * (y / height))
-        background[y, :] = (0, min(intensity * 2, 255), 0)
-    
-    # Add some subtle texture
-    noise = np.random.randint(0, 50, (height, width, 3), dtype=np.uint8)
-    background = cv.addWeighted(background, 0.9, noise, 0.1, 0)
-    
-    return background
-
 def Menu(frame):
-    # Create a background
-    height, width = frame.shape[:2]
-    background = create_menu_background(width, height)
+    background = cv.imread(menu_bg_path, cv.IMREAD_COLOR)
+    background = cv.resize(background, (frame.shape[1], frame.shape[0]))
     frame[:] = background
-    
-    # Casino-style title
-    cv.putText(frame, "BLACKJACK", (width//2 - 400, 200), 
-                cv.FONT_HERSHEY_SCRIPT_COMPLEX, 3.0, 
-                (255, 255, 255), 5, cv.LINE_AA)
-    
-    # Menu options with casino-style design
-    def draw_button(text, y_position, is_selected=False):
-        button_width, button_height = 600, 100
-        x = (width - button_width) // 2
-        
-        # Button background
-        color = (200, 200, 200) if is_selected else (150, 150, 150)
-        cv.rectangle(frame, 
-                      (x, y_position), 
-                      (x + button_width, y_position + button_height), 
-                      color, 
-                      -1)
-        
-        # Button border
-        cv.rectangle(frame, 
-                      (x, y_position), 
-                      (x + button_width, y_position + button_height), 
-                      (0, 0, 0), 
-                      3)
-        
-        # Text
-        cv.putText(frame, text, 
-                    (x + 50, y_position + 70), 
-                    cv.FONT_HERSHEY_SIMPLEX, 
-                    2.0, 
-                    (0, 0, 0), 
-                    3, 
-                    cv.LINE_AA)
-    
-    # Draw menu options
-    draw_button("1. PLAY", 400)
-    draw_button("2. DATASETS", 600)
-    draw_button("3. EXIT", 800)
-    
-    # Add some decorative elements
-    cv.putText(frame, "Computer Vision Blackjack", 
-                (width//2 - 350, height - 50), 
-                cv.FONT_HERSHEY_SIMPLEX, 
-                1.5, 
-                (200, 200, 200), 
-                2, 
-                cv.LINE_AA)
     
 def save_images(folder_path, warp_list, counter):
     if not os.path.exists(folder_path):
@@ -384,10 +431,12 @@ while True:
     state = handleState(key, state, image)
     
     if key == ord('s'):
-        stay = not stay  # This toggles between True and False
+        stay = not stay
         time.sleep(1)
     
-    print(stay)
+    if key == ord('r'):
+        restart = not restart
+        time.sleep(1)
     
     if key == ord('3'):
         break

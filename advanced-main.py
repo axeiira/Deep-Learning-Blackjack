@@ -219,7 +219,7 @@ def load_class_mapping(mapping_file):
 model = tf.keras.models.load_model('model/cnn_model.h5')
 class_mapping_file = 'class_mapping.txt'
 class_names = load_class_mapping(class_mapping_file)
-menu_bg_path = "assets/menu-bg.jpg"
+menu_bg_path = "assets/menu-bg-2.jpg"
 game_bg_path = "assets/new-game-background.png"
 
 def calculate_card_value(card_name):
@@ -281,13 +281,13 @@ def Masking(image):
     return mask
 
 def DetectCards(image):
-    global game_state, loser, winner,stay, constant_player_score, constant_dealer_score,restart,saved_dealer_cards,saved_player_cards, saved_deck1_cards, fourth_cards, final_card, final_table_cards, pot
+    global game_state, loser, winner,stay, constant_player_score, constant_dealer_score,restart
+    global saved_dealer_cards,saved_player_cards, saved_deck1_cards, fourth_cards, final_card, final_table_cards, pot
     mask = Masking(image)
     contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
     warped_cards = []
     detected_cards = []
-    player_score = 0
-    dealer_score = 0
+    confidence_threshold = 0.5
 
     for contour in contours:
         area = cv.contourArea(contour)
@@ -326,23 +326,26 @@ def DetectCards(image):
             homography_matrix = cv.getPerspectiveTransform(ordered_card_points, pts_dst)
             warped_card = cv.warpPerspective(image, homography_matrix, (width, height))
             warped_cards.append(warped_card)
-            
+    
     for warped_card in warped_cards:
-        processed_card = cv.resize(warped_card, (128, 128),interpolation=cv.INTER_LANCZOS4)
-        processed_card = processed_card / 255.0 
-        processed_card = np.expand_dims(processed_card, axis=0)
-        
-        prediction = model.predict(processed_card)
-        predicted_class= np.argmax(prediction, axis=1)[0]
-        class_name = class_names.get(predicted_class, "Unknown") if class_names else "Unknown"
-        
-        # cv.rectangle(image, (int(top_left[0]), int(top_left[1])), (int(bottom_right[0]), int(bottom_right[1])), (255, 0, 0), 2) 
-        # cv.putText(image, f'Class: {class_name}', (x, y), cv.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2)
-        
-        detected_cards.append({
-            'class_name': class_name,
-            'location': (int(top_left[0]), int(top_left[1]), int(bottom_right[0]), int(bottom_right[1]))
-        })
+            processed_card = cv.resize(warped_card, (128, 128), interpolation=cv.INTER_LANCZOS4)
+            processed_card = processed_card / 255.0 
+            processed_card = np.expand_dims(processed_card, axis=0)
+            
+            prediction = model.predict(processed_card)
+            predicted_class = np.argmax(prediction, axis=1)[0]
+            confidence_level = np.max(prediction, axis=1)[0]  # Extract the confidence level
+            class_name = class_names.get(predicted_class, "Unknown") if class_names else "Unknown"
+            
+            if confidence_level >= confidence_threshold:
+                # cv.rectangle(image, (int(top_left[0]), int(top_left[1])), (int(bottom_right[0]), int(bottom_right[1])), (255, 0, 0), 2) 
+                # cv.putText(image, f'Class: {class_name}', (x, y), cv.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2)
+                
+                detected_cards.append({
+                    'class_name': class_name,
+                    'location': (int(top_left[0]), int(top_left[1]), int(bottom_right[0]), int(bottom_right[1])),
+                    'confidence': confidence_level  # Optionally, include the confidence level
+                })
         
     for contour in contours:
         cv.drawContours(image, [contour], -1, (255, 0, 255), 3)
@@ -370,6 +373,9 @@ def DetectCards(image):
         player2.current_bet = 0
         
         for index, card in enumerate(detected_cards):
+            if index >= 2:
+                break
+            
             class_name = card['class_name']
             y_offset = y_start + (index * (card_height + gap))
             x_offset = x_start
@@ -402,6 +408,9 @@ def DetectCards(image):
         
     elif game_state == "dealer":
         for index, card in enumerate(detected_cards):
+            if index >= 2:
+                break
+            
             class_name = card['class_name']
             y_offset = y_start + (index * (card_height + gap))
             x_offset = x_dealer
@@ -488,6 +497,9 @@ def DetectCards(image):
             roi[:] = card_image
 
         for index, card in enumerate(detected_cards):
+            if index >= 3:
+                break
+            
             class_name = card['class_name']
             x_offset = dx_start + index * (card_width + dgap)  # Calculate x position with gap
             y_offset = dy_start # Keep y position constant
@@ -666,6 +678,9 @@ def DetectCards(image):
             roi[:] = card_image
         
         for index,card in enumerate(detected_cards):
+            if index >= 1:
+                break
+            
             class_name = card['class_name']
             x_offset = 1147 + dgap
             y_offset = 823
@@ -877,6 +892,9 @@ def DetectCards(image):
             roi[:] = card_image
             
         for index,card in enumerate(detected_cards):
+            if index >= 1:
+                break
+            
             class_name = card['class_name']
             x_offset = dx_start + 4 * (card_height + dgap)
             y_offset = 823

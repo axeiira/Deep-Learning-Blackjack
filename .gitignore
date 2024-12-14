@@ -9,5 +9,10 @@ datasets-kartu/
 #Ignore Dummy / Test Files
 test.py
 main-picture.py
+test2.py
+test3.py
+test_logic.py
+test_pygame.py
+test_ui.py
 
 .DS_Store

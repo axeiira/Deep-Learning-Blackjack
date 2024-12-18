@@ -199,9 +199,14 @@ MIN_AREA = 8500
 MAX_AREA = 12000
 ASPECT_RATIO = 0.7
 
-#GREEN-SCREEN
+# #GREEN-SCREEN
 lower = np.array([60 - 20, 40, 40])
 upper = np.array([60 + 20, 255, 255])
+
+# lower = np.array([120 - 20, 40, 40])  # Adjust Hue for blue
+# upper = np.array([120 + 20, 255, 255])
+
+
 
 #Trained Model
 def load_class_mapping(mapping_file):
@@ -287,7 +292,7 @@ def DetectCards(image):
     contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
     warped_cards = []
     detected_cards = []
-    confidence_threshold = 0.5
+    confidence_threshold = 0.6
 
     for contour in contours:
         area = cv.contourArea(contour)
